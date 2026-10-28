@@ -9,7 +9,8 @@ const path = require('node:path');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || 'carepoint-demo-secret-change-before-deployment';
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'db.json');
+const isVercel = Boolean(process.env.VERCEL);
+const DB_PATH = process.env.DB_PATH || (isVercel ? path.join('/tmp', 'db.json') : path.join(__dirname, 'data', 'db.json'));
 const TOKEN_TTL = '8h';
 
 app.disable('x-powered-by');
@@ -25,7 +26,18 @@ function initialDb() {
 }
 function ensureDb() {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify(initialDb(), null, 2));
+  if (!fs.existsSync(DB_PATH)) {
+    if (isVercel) {
+      const seedPath = path.join(__dirname, 'data', 'db.json');
+      if (fs.existsSync(seedPath)) {
+        try {
+          fs.copyFileSync(seedPath, DB_PATH);
+          return;
+        } catch {}
+      }
+    }
+    fs.writeFileSync(DB_PATH, JSON.stringify(initialDb(), null, 2));
+  }
 }
 function readDb() {
   ensureDb();
@@ -178,5 +190,11 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not fo
 app.use(express.static(__dirname));
 app.use(handleError);
 
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`CarePoint server running at http://localhost:${PORT}`);
+  });
+}
 
 module.exports = app;
+module.exports.app = app;
